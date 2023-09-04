@@ -1,0 +1,102 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Library
+```{r}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+```
+# Import data mekkah
+```{r}
+dataziq <- read_excel("C:\\Users\\User\\Documents\\raziq\\semseter 5\\MPDW\\praktikum\\data suhu mekkah.xlsx", 
+    sheet = "Sheet1")
+View(dataziq)
+```
+## Ubah data menjadi data deret waktu
+```{r}
+dataziq.ts <- ts(dataziq$`suhu mekkah`)
+```
+## ringkasan data
+```{r}
+summary(dataziq.ts)
+```
+# membuat plot
+```{r}
+ts.plot(dataziq.ts, xlab="Time Period ", ylab="Suhu Mekkah", 
+        main = "Time Series Plot")
+points(dataziq.ts)
+```
+dapat dilihat bahwwa data deret waktu pada suhu mekkah membentuk pola aditif musiman tanpa trend
+
+# Membagi data menjadi data latih(80%) dan data uji(20%) 
+```{r}
+dt.latih <- dataziq[1:115,2]
+dt.uji <- dataziq[116:144,2]
+dt.latih.ts <- ts(dt.latih, frequency = 12)
+dt.uji.ts <- ts(dt.uji, frequency = 12)
+```
+
+# membuat plot dataziq, data latih dan data uji
+```{r}
+plot(dataziq.ts, col="purple",main="Plot semua data")
+points(dataziq.ts)
+
+plot(dt.latih.ts, col="orange",main="Plot data latih")
+points(dt.latih.ts)
+
+plot(dt.uji.ts, col="green",main="Plot data uji")
+points(dt.uji.ts)
+```
+
+# Pemulusan winter aditif
+```{r}
+# optimum
+winter.opt<- HoltWinters(dt.latih.ts, alpha= NULL,  beta = NULL, gamma = NULL, seasonal = "additive")
+winter.opt
+winter.opt$fitted
+xhat.opt <- winter.opt$fitted[,2]
+```
+
+# Peramalan
+```{r}
+#optimum
+forecast.opt <- predict(winter.opt, n.ahead = 29)
+forecast.opt
+```
+
+# Plot data deret waktu yang sudah diramal 
+```{r}
+plot(dt.latih.ts,main="Winter optimum",type="l",col="black",
+     xlim=c(1,25),pch=20)
+lines(xhat.opt,type="l",col="green")
+lines(forecast.opt,type="l",col="green")
+```
+
+# Cek akurasi data latih
+```{r}
+SSE.opt<-winter.opt$SSE
+MSE.opt<-winter.opt$SSE/length(dt.latih.ts)
+RMSE.opt<-sqrt(MSE.opt)
+akurasi.opt <- matrix(c(SSE.opt,MSE.opt,RMSE.opt))
+row.names(akurasi.opt)<- c("SSE.opt", "MSE.opt", "RMSE.opt")
+colnames(akurasi.opt) <- c("Akurasi")
+akurasi.opt
+```
+
+# Cek akurasi data uji
+```{r}
+forecast.opt<-data.frame(forecast.opt)
+dt.uji.ts <- data.frame(dt.uji.ts)
+selisih.opt<-(forecast.opt)-(dt.uji.ts)
+SSEuji.opt<-sum(selisih.opt^2)
+MSEuji.opt<-SSEuji.opt/length(dt.uji.ts)
+akurasi.opt <- matrix(c(SSE.opt,MSE.opt))
+row.names(akurasi.opt)<- c("SSEuji.opt", "MSEuji.opt")
+colnames(akurasi.opt) <- c("Akurasi")
+akurasi.opt
+```
+
