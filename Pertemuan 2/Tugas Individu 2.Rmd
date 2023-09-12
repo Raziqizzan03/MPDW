@@ -63,7 +63,7 @@ corrplot.mixed(matriks, upper = 'circle', lower = 'number', order = "original",
 ## Volume
 ts.plot(volume.ts, xlab="Time Period ", ylab="Volume", 
         main = "Time Series Plot")
-points(close.ts)
+points(volume.ts)
 
 ## High
 ts.plot(high.ts, xlab="Time Period ", ylab="High", 
