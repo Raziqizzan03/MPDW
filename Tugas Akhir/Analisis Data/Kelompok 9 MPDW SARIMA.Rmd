@@ -1,0 +1,439 @@
+---
+title: "SARIMA"
+author: "Kelompok 9"
+date: "2023-11-06"
+output:
+   html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+---
+
+## library
+```{r}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+library("rio")
+library("ggplot2")
+library("kableExtra") 
+library("astsa")
+library("car")
+library("portes")
+library("MASS")
+library("tseries")
+library("rugarch")
+library("lmtest")
+library("FinTS")
+```
+
+## Input data
+
+```{r}
+data <- read.csv("https://raw.githubusercontent.com/Raziqizzan03/MPDW/main/data/(Full%20Data)%20Data%20Pendatang%20Mancanegara%20di%20Provinsi%20Bali%20(1).csv")
+data<-data[,2:3]
+```
+
+# Eksplorasi data
+
+### plot Data full
+
+```{r}
+plot_wisatawan = ts(data$Jumlah, frequency = 12, start= 2009)
+plot(plot_wisatawan, 
+     xlab = "Tahun", ylab="Wisatawan")
+points(plot_wisatawan)
+```
+
+### Pembagian data uji data latih
+
+```{r}
+data_training<-data[1:166,2]
+training_ts<-ts(data_training,start=c(2009,1),frequency=12) 
+data_testing<-data[167:177,2]
+testing_ts<-ts(data_testing, start = c(2022,11), frequency = 12)
+```
+
+data training = januari 2009-oktober 2022
+data uji = november 2022- september 2023
+
+### PLot data uji dan data latih
+
+```{r}
+# data latih
+ts.plot(training_ts, col="orange",main="Plot data latih", type="o",xlab="Time",ylab="Data")
+points(training_ts)
+
+# data uji
+ts.plot(testing_ts, col="green",main="Plot data uji", type="o",xlab="Time",ylab="Data")
+points(testing_ts)
+```
+
+
+# Uji kestasioneran data
+
+### plot acf 
+
+```{r}
+Acf(training_ts, lag.max = 48) 
+```
+
+Berdasarkan plot ACF, terlihat bahwa plot ACF pada data tersebut cenderung *tails off slowly*. menandakan bahwa data tersebut tidak stasioner dalam rataan
+
+### Uji ADF
+
+```{r}
+tseries::adf.test(training_ts)
+```
+
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar  0.4957 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF.
+
+### Plot Box-Cox
+
+```{r}
+index <- seq(1:166)
+bc = boxcox(training_ts~index, lambda = seq(0,4,by=0.01))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+Gambar di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **0.4** dan pada selang kepercayaan 95% nilai memiliki batas bawah **0.40** dan batas atas **0.54**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data bangkitan tidak stasioner dalam ragam.
+
+# Penanganan kestasioneran
+
+### Transformasi logaritma 
+
+karena lamda yg didapatkan 0.4  mendekati 0 maka dilakukan transformasi logaritma
+
+```{r}
+training_ts <- log(training_ts)
+testing_ts <- log(testing_ts)
+```
+
+### Diferencing non musiman
+
+```{r}
+training_diffnonmusiman <- diff(training_ts, differences = 1)
+acf1 <- acf(training_diffnonmusiman,lag.max=48,xaxt="n", main="ACF d1")
+     axis(1, at=0:48/12, labels=0:48)
+```
+
+### Diferencing non musiman dan musiman
+
+```{r}
+diff12.turis <- diff(training_ts,lag=12)
+training_diffnonmusiman <- diff(diff12.turis,differencing=1)
+acf2(training_diffnonmusiman)
+```
+
+# Identifikasi model
+
+### pemilihan model
+
+```{r}
+acf2(training_diffnonmusiman)
+```
+
+model tentatif yg terbentuk $Arima(0,1,1)(0,1,1)_{12}$, $Arima(1,1,0)(2,1,0)_{12}$,
+$Arima(0,1,1)(2,1,0)_{12}$, $Arima(1,1,0)(0,1,1)_{12}$, $Arima(1,1,1)(0,1,1)_{12}$
+$Arima(1,1,1)(2,1,0)_{12}$, $Arima(0,1,1)(2,1,1)_{12}$, $Arima(1,1,0)(2,1,1)_{12}$
+
+# Seleksi Model
+
+### Arima(0,1,1)(0,1,1)_{12}
+
+```{r}
+fit1<-Arima(training_ts, order = c(0,1,1), seasonal=list(order=c(0,1,1), periode=12), method = "ML") 
+coeftest(fit1)
+summary(fit1) #oke
+```
+
+### Arima(1,1,0)(2,1,0)_{12}
+
+```{r}
+fit2<-Arima(training_ts, order = c(1,1,0), seasonal=list(order=c(2,1,0), periode=12), method = "ML") 
+coeftest(fit2)
+summary(fit2) #oke
+```
+
+### Arima(0,1,1)(2,1,0)_{12}
+
+```{r}
+fit3<-Arima(training_ts, order = c(0,1,1), seasonal=list(order=c(2,1,0), periode=12), method = "ML") #signifikan
+coeftest(fit3)
+summary(fit3) #oke
+```
+
+### Arima(1,1,0)(0,1,1)_{12}
+
+```{r}
+fit4<-Arima(training_ts, order = c(1,1,0), seasonal=list(order=c(0,1,1), periode=12), method = "ML") #signifikan
+coeftest(fit4)
+summary(fit4) #oke
+```
+
+### Arima(1,1,1)(0,1,1)_{12}
+
+```{r}
+fit5<-Arima(training_ts, order = c(1,1,1), seasonal=list(order=c(0,1,1), periode=12), method = "ML") #signifikan
+coeftest(fit5)
+summary(fit5)
+```
+
+### Arima(1,1,1)(2,1,0)_{12}
+
+```{r}
+fit6<-Arima(training_ts, order = c(1,1,1), seasonal=list(order=c(2,1,0), periode=12), method = "ML") #signifikan
+coeftest(fit6)
+summary(fit6)
+```
+
+### Arima(0,1,1)(2,1,1)_{12}
+
+```{r}
+fit7<-Arima(training_ts, order = c(0,1,1), seasonal=list(order=c(2,1,1), periode=12), method = "ML") #signifikan
+coeftest(fit7)
+summary(fit7)
+```
+
+### Arima(1,1,0)(2,1,1)_{12}
+
+```{r}
+fit8<-Arima(training_ts, order = c(1,1,0), seasonal=list(order=c(2,1,1), periode=12), method = "ML") #signifikan
+coeftest(fit8)
+summary(fit8)
+```
+
+### Perbandingan model yg signifikan
+
+```{r}
+aic_model_ov <- data.frame( "Nama Model" =c("ARIMA(0,1,1)×ARIMA(0,1,1)_{12}","ARIMA(1,1,0)×ARIMA(2,1,0)_{12}","ARIMA(0,1,1)×ARIMA(2,1,0)_{12}","ARIMA(1,1,0)×ARIMA(0,1,1)_{12}"),"AIC" = c(fit1$aic,fit2$aic,fit3$aic,fit4$aic))
+aic_model_ov
+dplyr::arrange(.data=aic_model_ov, AIC)
+```
+
+dapat dilihat bahwa model dengan aic terkecil dan parameter signifikan adalah Arima(1,1,0)(0,1,1)
+
+# Overfitting
+
+### Arima(2,1,0)(0,1,1)_{12}
+
+```{r}
+#===== OVERFITTING
+overfit<-Arima(training_ts, order = c(2,1,0), seasonal=list(order=c(0,1,1), periode=12), method = "ML") 
+coeftest(overfit)
+summary(overfit)
+```
+
+Tetap model yg terpilih adalah Arima(1,1,0)(0,1,1)
+
+# diagnostik sisaan
+
+### Eksplorasi data
+
+```{r}
+sisaan.da <- fit4$residuals 
+par(mfrow=c(2,2)) 
+qqnorm(sisaan.da) 
+qqline(sisaan.da, col = "blue", lwd = 2) 
+plot(c(1:length(sisaan.da)),sisaan.da, xlab = "Order", ylab = "Residual") 
+acf(sisaan.da) 
+pacf(sisaan.da) 
+par(mfrow = c(1,1))
+```
+
+Berdasarkan plot kuantil-kuantil normal, secara eksplorasi ditunjukkan sisaan tidak menyebar normal ditandai dengan adanya titik-titik yang cenderung tidak mengikuti garis. Kemudian dapat dilihat juga lebar pita sisaan yang cenderung sudah sama menandakan bahwa sisaan memiliki ragam yang homogen. Plot ACF dan PACF sisaan model menunjukkan saling bebas. Kondisi ini akan diuji lebih lanjut dengan uji formal.
+
+# Uji formal
+
+### 1) Sisaan Menyebar Normal
+
+```{r}
+ks.test(fit4$residuals,"pnorm")
+```
+
+$H_0$ : Sisaan menyebar normal
+
+$H_1$ : Sisaan tidak menyebar normal
+
+Berdasarkan uji KS tersebut, didapat *p-value* sebesar 2.2e-16 yang kurang dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa sisaan tidak menyebar normal. Hal ini sesuai dengan hasil eksplorasi menggunakan plot kuantil-kuantil normal.
+
+### 2) Sisaan saling bebas/tidak ada autokorelasi
+
+```{r}
+Box.test(fit4$residuals, lag = 20, type = "Ljung-Box")  
+```
+
+$H_0$ : Sisaan saling bebas
+
+$H_1$ : Sisaan tidak tidak saling bebas
+
+Berdasarkan uji Ljung-Box tersebut, didapat *p-value* sebesar  0.0776 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa sisaan saling bebas.
+
+### 3) Sisaan homogen
+
+```{r}
+#ragam homogen
+Box.test((fit4$residuals)^2, type = "Ljung")
+```
+
+$H_0$ : Ragam sisaan homogen
+
+$H_1$ : Ragam sisaan tidak homogen
+
+Berdasarkan uji Ljung-Box terhadap sisaan kuadrat tersebut, didapat *p-value* sebesar $0.7383$ yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa ragam sisaan homogen.
+
+
+### 4) Nilai tengah sisaan sama dengan nol
+
+```{r}
+t.test(fit4$residuals, mu = 0, conf.level = 0.95)
+```
+
+$H_0$ : nilai tengah sisaan sama dengan 0
+
+$H_1$ : nilai tengah sisaan tidak sama dengan 0
+
+Berdasarkan uji-ttersebut, didapat *p-value* sebesar 0.9076 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa nilai tengah sisaan sama dengan nol.
+
+# Peramalan
+
+```{r}
+# Arima(1,1,0)(0,1,1)_12
+model_terbaik<-Arima(training_ts, order = c(1,1,0), seasonal=list(order=c(0,1,1), periode=12), method = "ML") 
+ramalan_sarima<- forecast(model_terbaik,11)
+
+plot(ramalan_sarima, main = "SARIMA Forecast")
+```
+
+# Akurasi
+
+```{r}
+library(Metrics)
+a <- exp(ramalan_sarima$mean)
+b <- exp(testing_ts)
+mape_result <- mape(b,a) * 100
+cat("MAPE:", sprintf("%.2f%%", mape_result), "\n")
+a <- as.numeric(a)
+```
+
+# Plot perbandingan
+
+### Data peramalan intervensi
+
+```{r}
+#Data hasil peramalan intervensi
+library(readxl)
+testing_data<-data[167:177,2]
+ts_testings<-ts(testing_data, frequency = 12)
+ts_testings <- ts(ts_testings, frequency = 12)
+deta5<-read_excel("C:\\Users\\User\\Documents\\raziq\\semseter 5\\MPDW\\prediksii.xlsx", sheet = 2)
+ramalan_intervensi <-ts(deta5, frequency = 12, start = 2022.9)
+```
+
+### Data peramalan LSTM
+
+```{r}
+#data peramalan LSTM
+datalstm <- read_excel("C:\\Users\\User\\Documents\\raziq\\semseter 5\\MPDW\\prediksiLSTM3.xlsx")
+datalstm <- as.numeric(datalstm$prediksi)
+datalstmts <- ts(datalstm, frequency = 12, start = 2022.9)
+```
+
+### PLot data keseluruhan perbandingan 
+
+```{r}
+datats <- ts(data[,2], frequency = 12, start = 2009)
+ramalan_sarima1 <- ts(a, frequency = 12, start = 2022.9)
+# Buat plot data asli
+par(mar = c(5, 5, 4, 5))
+plot(datats, type = "l", col = "blue", ylim = range(c(datats, ramalan_sarima1, ramalan_intervensi, datalstmts)), ylab = "Jumlah Wisatawan", xlab = "Waktu", main = "Plot Data Asli dan Ramalan")
+
+# Tambahkan plot hasil peramalan sesuai dengan waktu
+lines(ramalan_sarima1, col = "red", type = "l")
+lines(ramalan_intervensi, col = "black", type = "l")
+lines(datalstmts, col = "green", type = "l")
+
+# Tambahkan legenda
+legend("topleft", legend = c("Data Asli", "Ramalan SARIMA", "Ramalan Intervensi", "Ramalan LSTM"), col = c("blue", "red","black","green"), lty = 1)
+
+```
+
+### Plot data test dengan peramalan
+
+```{r}
+dataaktual <- ts(data[167:177,2],frequency = 12, start = 2022.9)
+# Buat plot data asli
+par(mar = c(4, 4, 3, 4))
+plot(dataaktual, type = "l", col = "blue", ylim = c(min(dataaktual, ramalan_sarima1,ramalan_intervensi, datalstmts), max(dataaktual, ramalan_sarima1,ramalan_intervensi, datalstmts)), ylab = "Jumlah Wisatawan", xlab = "Waktu", main = "Plot Data Asli dan Ramalan")
+
+# Tambahkan plot hasil peramalan sesuai dengan waktu
+lines(ramalan_sarima1, col = "red", type = "l")
+lines(ramalan_intervensi, col="black", type = "l")
+lines(datalstmts, col = "green", type = "l")
+
+# Tambahkan legenda
+legend("topleft", legend = c("Data Aktual", "Ramalan SARIMA", "Ramalan Intervensi", "Ramalan LSTM"), col = c("blue", "red","black", "green"), lty = 1)
+
+```
+
+```{r}
+dataaktual <- ts(data[167:177,2],frequency = 12, start = 2022.9)
+# Buat plot data asli
+par(mar = c(4, 4, 3, 4))
+plot(dataaktual, type = "l", col = "blue", ylim = c(min(dataaktual,ramalan_intervensi, datalstmts), max(dataaktual,ramalan_intervensi, datalstmts)), ylab = "Jumlah Wisatawan", xlab = "Waktu", main = "Plot Data Asli dan Ramalan")
+
+# Tambahkan plot hasil peramalan sesuai dengan waktu
+lines(ramalan_intervensi, col="red", type = "l")
+lines(datalstmts, col = "green", type = "l")
+
+# Tambahkan legenda
+legend("topleft", legend = c("Data Aktual", "Ramalan Intervensi", "Ramalan LSTM"), col = c("blue", "red", "green"), lty = 1)
+
+```
+
+# Plot peramalan 20 periode kedepan
+
+```{r}
+#data peramalan LSTM
+datalstm20 <- read_excel("C:\\Users\\User\\Documents\\raziq\\semseter 5\\MPDW\\prediksi20(2).xlsx", sheet = 2)
+
+datalstm20ts <- ts(datalstm20, frequency = 12, start = 2009)
+
+datapredik20 <- ts(datalstm20[178:197,], frequency = 12, start = 2023.7)
+```
+
+```{r}
+# Buat plot data asli
+par(mar = c(5, 5, 4, 5))
+plot(datalstm20ts, type = "l", col = "green", ylim = range(c(datalstm20ts)), ylab = "Jumlah Wisatawan", xlab = "Waktu", main = "Plot Data Asli dan Ramalan")
+
+
+# Tambahkan plot hasil peramalan sesuai dengan waktu
+lines(datapredik20, col = "black", type = "l")
+
+# Tambahkan legenda
+legend("topleft", legend = c("Data Asli","Peramalan 20 periode"), col = c("green","black"), lty = 1)
+```
+# Perbandingan MAPE
+
+```{r}
+mape_sarima <- mape(b,a) * 100
+mape_intervensi <- mape(b,deta5$prediksi) * 100
+mape_LSTM <- mape(b,datalstm) * 100
+
+MAPE_Perbandingan <- data.frame( "Model" =c("SARIMA","Intervensi","LSTM"),"MAPE" = c(mape_sarima,mape_intervensi,mape_LSTM))
+
+dplyr::arrange(.data=MAPE_Perbandingan, MAPE)
+```
+
+
